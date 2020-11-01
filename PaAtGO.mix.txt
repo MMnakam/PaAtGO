@@ -1,0 +1,49 @@
+###PaAtGO
+###R: Pick At homologs
+library(dplyr)
+PaAthmlg<-read.table("Pa_At900E_05.txt",sep="\t",header=FALSE)
+
+#A list of differentially modified/expressed Pa genes(MA_XXXXXXXXX)
+PaL<-read.table("Pa_DEG.list",header=FALSE)
+colnames(PaAthmlg)<-c("Pa","At")
+colnames(PaL)<-"Pa"
+CT<-dplyr::semi_join(PaAthmlg,PaL, by = "Pa", copy = FALSE)  
+nrow(PaL)
+nrow(CT)
+write.table(CT[,2],"Pa_Atresult",sep="\t",quote=FALSE,col.names=FALSE,row.names=FALSE)
+
+
+###bash:Frequency of Pa_Atresult
+n=`wc -l < Pa_Atresult`
+rm Freq
+for i in `seq 1 $n` #homologAGI_to_GOfreq
+do
+awk 'NR=='$i'{print}' Pa_Atresult >query
+ggrep -w -f query uniqAtGO  >> Freq 
+done
+awk '{print $2}' Freq |sort |uniq -c |sort -k1nr|awk 'BEGIN{OFS="\t"}{print $1,$2}' >enrichGO.freq
+rm query Freq
+
+###R: Enrichment score
+WHOLE <- read.delim(file="wholeAthomologGOinPa.freq", sep= "\t",header = FALSE)
+EN <- read.delim(file="enrichGO.freq", sep= "\t",header = FALSE)
+colnames(WHOLE)<-c("freq","GO")
+colnames(EN)<-c("freq","GO")
+CTwe<-dplyr::right_join(WHOLE,EN, by = "GO", copy = FALSE)
+wTOTAL<-sum(WHOLE[,1])
+eTOTAL<-sum(EN[,1])
+Ement<-(CTwe[,3]/eTOTAL)/(CTwe[,1]/wTOTAL)
+pval<-vector()
+for(i in 1:nrow(EN)){
+pval[i]<-phyper(CTwe[i,3], CTwe[i,1], wTOTAL - CTwe[i,1], eTOTAL, lower.tail = FALSE) 
+}
+FDR<-p.adjust(pval,method="fdr")
+CTweEq<-cbind(CTwe, Ement,pval,FDR) #head(CTweEp[order(CTweEp[,5]),])
+Enriched<-subset(CTweEq,CTweEq[,4]>3 & CTweEq[,6]<0.001) #filtering by enrichment and FDR
+ 
+#Add AtGO annotation 
+GOorg<-read.delim("GOorg",sep= "\t",header = FALSE) 
+colnames(GOorg)<-c("GO","anno")
+eGOanno<-dplyr::right_join(GOorg,Enriched, by = "GO", copy = FALSE)
+eGOanno
+write.table(eGOanno,"tempo.GO",sep="\t",quote=FALSE)
